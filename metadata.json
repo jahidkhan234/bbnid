@@ -1,0 +1,6 @@
+{
+  "name": "Bangla OCR - NID & Birth Certificate Extractor",
+  "description": "AI-powered OCR extraction tool for National ID (NID), Smart Cards, and Birth Certificates with full Bengali language recognition and editable structured fields.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
