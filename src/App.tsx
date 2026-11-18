@@ -10,8 +10,10 @@ import { ImagePreview } from './components/ImagePreview';
 import { ResultDisplay } from './components/ResultDisplay';
 import { LoadingOverlay } from './components/LoadingOverlay';
 import { HistoryDrawer } from './components/HistoryDrawer';
+import { ServerSettingsModal } from './components/ServerSettingsModal';
 import { OcrResultData, ExtractionHistoryItem, DocumentCategory } from './types';
 import { SampleDoc } from './utils/sampleData';
+import { getApiEndpoint } from './utils/apiConfig';
 import {
   ShieldCheck,
   CheckCircle,
@@ -24,6 +26,7 @@ import {
   FolderOpen,
   Eye,
   Lock,
+  Server,
 } from 'lucide-react';
 
 export default function App() {
@@ -35,6 +38,7 @@ export default function App() {
   const [ocrResult, setOcrResult] = useState<OcrResultData | null>(null);
   const [history, setHistory] = useState<ExtractionHistoryItem[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
+  const [isServerSettingsOpen, setIsServerSettingsOpen] = useState<boolean>(false);
   const [autoExtractEnabled, setAutoExtractEnabled] = useState<boolean>(true);
   const [lastDurationMs, setLastDurationMs] = useState<number | null>(null);
 
@@ -82,7 +86,8 @@ export default function App() {
     const startTime = Date.now();
 
     try {
-      const response = await fetch('/api/extract-ocr', {
+      const endpoint = getApiEndpoint('/api/extract-ocr');
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -93,6 +98,12 @@ export default function App() {
           documentTypeHint: docTypeHint,
         }),
       });
+
+      if (response.status === 404) {
+        throw new Error(
+          'ব্যাকএন্ড এপিআই পাওয়া যায়নি (404 Not Found)। আপনি যদি GitHub Pages এ সাইটটি ডিপ্লয় করে থাকেন, তবে মনে রাখবেন GitHub Pages শুধুমাত্র স্ট্যাটিক ফাইল হোস্ট করে, কোনো Node.js ব্যাকএন্ড সার্ভার চালাতে পারে না। দয়া করে ওপরের সার্ভার বাটনে ক্লিক করে আপনার ব্যাকএন্ড এপিআই URL যুক্ত করুন।'
+        );
+      }
 
       const resJson = await response.json();
 
@@ -204,6 +215,7 @@ export default function App() {
       {/* Top Bar Header */}
       <Header
         onOpenHistory={() => setIsHistoryOpen(true)}
+        onOpenServerSettings={() => setIsServerSettingsOpen(true)}
         historyCount={history.length}
         onReset={handleReset}
       />
@@ -228,19 +240,32 @@ export default function App() {
 
         {/* Global Error Banner */}
         {errorMessage && (
-          <div className="p-4 sm:p-5 rounded-2xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/60 text-red-800 dark:text-red-200 flex items-start gap-3.5 shadow-xs">
-            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-            <div className="flex-1 space-y-1">
-              <h4 className="text-sm font-bold">সমস্যা পরিলক্ষিত হয়েছে</h4>
-              <p className="text-xs sm:text-sm leading-relaxed">{errorMessage}</p>
+          <div className="p-4 sm:p-5 rounded-2xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/60 text-red-800 dark:text-red-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 shadow-xs">
+            <div className="flex items-start gap-3 flex-1">
+              <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold">সমস্যা পরিলক্ষিত হয়েছে</h4>
+                <p className="text-xs sm:text-sm leading-relaxed">{errorMessage}</p>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setErrorMessage(null)}
-              className="px-3 py-1 text-xs font-semibold bg-white dark:bg-red-900/50 hover:bg-red-100 rounded-lg border border-red-200 dark:border-red-800 text-red-700 dark:text-red-200"
-            >
-              বাতিল
-            </button>
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+              {(errorMessage.includes('GitHub Pages') || errorMessage.includes('404')) && (
+                <button
+                  type="button"
+                  onClick={() => setIsServerSettingsOpen(true)}
+                  className="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-xs transition-colors"
+                >
+                  সার্ভার URL যোগ করুন
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setErrorMessage(null)}
+                className="px-3 py-1.5 text-xs font-semibold bg-white dark:bg-red-900/50 hover:bg-red-100 rounded-lg border border-red-200 dark:border-red-800 text-red-700 dark:text-red-200"
+              >
+                বাতিল
+              </button>
+            </div>
           </div>
         )}
 
@@ -372,6 +397,13 @@ export default function App() {
         items={history}
         onSelectItem={handleHistorySelect}
         onClearHistory={handleClearHistory}
+      />
+
+      {/* Server Settings Modal */}
+      <ServerSettingsModal
+        isOpen={isServerSettingsOpen}
+        onClose={() => setIsServerSettingsOpen(false)}
+        onSaved={() => setErrorMessage(null)}
       />
     </div>
   );
