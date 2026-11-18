@@ -129,8 +129,8 @@ Perform thorough OCR extraction for all Bengali (বাংলা) and English te
 Ensure every key field (Name in Bengali & English, Identification/Registration Number, Date of Birth, Father's Name, Mother's Name, Address, Blood Group, Dates, Issuing Office) is populated into the 'fields' list with precise Bengali labels (labelBn) and English labels (labelEn).
 Also provide the complete unformatted text in 'fullText'.`;
 
-    // Prioritize ultra-low-latency model and enforce ThinkingLevel.LOW to minimize thinking pause
-    const candidateModels = ['gemini-3.1-flash-lite', 'gemini-4-hydrogen'];
+    // Resilient model tiering: gemini-4-hydrogen first (highest capacity), then gemini-2.5-flash and gemini-3.1-flash-lite
+    const candidateModels = ['gemini-4-hydrogen', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
     let lastError: any = null;
     let responseText: string | undefined;
 
@@ -141,6 +141,84 @@ Also provide the complete unformatted text in 'fullText'.`;
       while (attempts < maxAttempts) {
         attempts++;
         try {
+          const config: any = {
+            systemInstruction,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                documentType: {
+                  type: Type.STRING,
+                  description: 'Recognized document type in Bengali with English name in brackets (e.g. জাতীয় পরিচয়পত্র (NID) or জন্ম নিবন্ধন সনদ (Birth Certificate))',
+                },
+                documentCategory: {
+                  type: Type.STRING,
+                  description: 'One of: nid, smart_nid, birth_cert, passport, driving_license, other',
+                },
+                confidence: {
+                  type: Type.STRING,
+                  description: 'Overall reading confidence: High, Medium, or Low',
+                },
+                detectedLanguage: {
+                  type: Type.STRING,
+                  description: 'Detected language(s), e.g. বাংলা ও ইংরেজি (Bilingual), বাংলা (Bengali), English',
+                },
+                summary: {
+                  type: Type.STRING,
+                  description: 'A 1-2 sentence Bengali summary of the document and cardholder identity',
+                },
+                fields: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      id: {
+                        type: Type.STRING,
+                        description: 'Machine key like full_name_bn, nid_number, dob, address',
+                      },
+                      labelBn: {
+                        type: Type.STRING,
+                        description: 'Bengali label, e.g. নাম (বাংলা), জাতীয় পরিচয়পত্র নং, জন্ম তারিখ',
+                      },
+                      labelEn: {
+                        type: Type.STRING,
+                        description: 'English label, e.g. Name (Bengali), National ID No, Date of Birth',
+                      },
+                      value: {
+                        type: Type.STRING,
+                        description: 'Extracted text value as printed on the document',
+                      },
+                      category: {
+                        type: Type.STRING,
+                        description: 'One of: personal, identity, family, address, dates, other',
+                      },
+                      isImportant: {
+                        type: Type.BOOLEAN,
+                        description: 'True if this is a primary identifying field like ID number, full name, or DOB',
+                      },
+                    },
+                    required: ['id', 'labelBn', 'labelEn', 'value'],
+                  },
+                },
+                fullText: {
+                  type: Type.STRING,
+                  description: 'Complete unformatted verbatim OCR text found on the document',
+                },
+                notes: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: 'Observations or notes in Bengali about image clarity, barcode, seal, or caveats',
+                },
+              },
+              required: ['documentType', 'documentCategory', 'fields', 'fullText'],
+            },
+          };
+
+          // Only Gemini 3 & 4 models support thinkingLevel
+          if (modelName.startsWith('gemini-4') || modelName.startsWith('gemini-3')) {
+            config.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
+          }
+
           const response = await ai.models.generateContent({
             model: modelName,
             contents: {
@@ -156,79 +234,7 @@ Also provide the complete unformatted text in 'fullText'.`;
                 },
               ],
             },
-            config: {
-              systemInstruction,
-              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-              responseMimeType: 'application/json',
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  documentType: {
-                    type: Type.STRING,
-                    description: 'Recognized document type in Bengali with English name in brackets (e.g. জাতীয় পরিচয়পত্র (NID) or জন্ম নিবন্ধন সনদ (Birth Certificate))',
-                  },
-                  documentCategory: {
-                    type: Type.STRING,
-                    description: 'One of: nid, smart_nid, birth_cert, passport, driving_license, other',
-                  },
-                  confidence: {
-                    type: Type.STRING,
-                    description: 'Overall reading confidence: High, Medium, or Low',
-                  },
-                  detectedLanguage: {
-                    type: Type.STRING,
-                    description: 'Detected language(s), e.g. বাংলা ও ইংরেজি (Bilingual), বাংলা (Bengali), English',
-                  },
-                  summary: {
-                    type: Type.STRING,
-                    description: 'A 1-2 sentence Bengali summary of the document and cardholder identity',
-                  },
-                  fields: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        id: {
-                          type: Type.STRING,
-                          description: 'Machine key like full_name_bn, nid_number, dob, address',
-                        },
-                        labelBn: {
-                          type: Type.STRING,
-                          description: 'Bengali label, e.g. নাম (বাংলা), জাতীয় পরিচয়পত্র নং, জন্ম তারিখ',
-                        },
-                        labelEn: {
-                          type: Type.STRING,
-                          description: 'English label, e.g. Name (Bengali), National ID No, Date of Birth',
-                        },
-                        value: {
-                          type: Type.STRING,
-                          description: 'Extracted text value as printed on the document',
-                        },
-                        category: {
-                          type: Type.STRING,
-                          description: 'One of: personal, identity, family, address, dates, other',
-                        },
-                        isImportant: {
-                          type: Type.BOOLEAN,
-                          description: 'True if this is a primary identifying field like ID number, full name, or DOB',
-                        },
-                      },
-                      required: ['id', 'labelBn', 'labelEn', 'value'],
-                    },
-                  },
-                  fullText: {
-                    type: Type.STRING,
-                    description: 'Complete unformatted verbatim OCR text found on the document',
-                  },
-                  notes: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
-                    description: 'Observations or notes in Bengali about image clarity, barcode, seal, or caveats',
-                  },
-                },
-                required: ['documentType', 'documentCategory', 'fields', 'fullText'],
-              },
-            },
+            config,
           });
 
           responseText = response.text;
@@ -238,9 +244,9 @@ Also provide the complete unformatted text in 'fullText'.`;
         } catch (err: any) {
           lastError = err;
           console.warn(`Model ${modelName} attempt ${attempts} failed:`, err?.message || err);
-          // Wait 800ms before retrying
+          // Wait 1.2s before retrying to let transient 503 spikes drain
           if (attempts < maxAttempts) {
-            await new Promise((resolve) => setTimeout(resolve, 800));
+            await new Promise((resolve) => setTimeout(resolve, 1200));
           }
         }
       }
@@ -251,7 +257,10 @@ Also provide the complete unformatted text in 'fullText'.`;
     }
 
     if (!responseText) {
-      const errMsg = lastError?.message || 'মডেল থেকে ফলাফল পাওয়া যায়নি। অনুগ্রহ করে পুনরায় চেষ্টা করুন।';
+      let errMsg = lastError?.message || 'মডেল থেকে ফলাফল পাওয়া যায়নি। অনুগ্রহ করে পুনরায় চেষ্টা করুন।';
+      if (errMsg.includes('503') || errMsg.includes('high demand') || errMsg.includes('UNAVAILABLE')) {
+        errMsg = 'গুগল সার্ভারে সাময়িক ট্র্যাফিক চাপের কারণে (503 High Demand) সংযোগ ব্যাহত হয়েছে। অনুগ্রহ করে ১-২ সেকেন্ড পর আবার চেষ্টা করুন। (Google model experienced a transient 503 spike, please retry in a moment.)';
+      }
       return res.status(502).json({
         success: false,
         error: `ওসিআর নিষ্কাশন সম্পন্ন করা যায়নি: ${errMsg}`,
