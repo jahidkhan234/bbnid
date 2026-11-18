@@ -1,6 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 
@@ -18,9 +19,15 @@ app.use(express.urlencoded({ extended: true, limit: '30mb' }));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
+  const hasKey = Boolean(
+    process.env.GEMINI_API_KEY ||
+    process.env.API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.GOOGLE_GENAI_API_KEY
+  );
   res.json({
     status: 'ok',
-    hasApiKey: Boolean(process.env.GEMINI_API_KEY),
+    hasApiKey: hasKey,
     timestamp: new Date().toISOString(),
   });
 });
@@ -28,11 +35,18 @@ app.get('/api/health', (req, res) => {
 // OCR Extraction Endpoint
 app.post('/api/extract-ocr', async (req, res) => {
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const rawApiKey =
+      process.env.GEMINI_API_KEY ||
+      process.env.API_KEY ||
+      process.env.GOOGLE_API_KEY ||
+      process.env.GOOGLE_GENAI_API_KEY;
+
+    const apiKey = rawApiKey ? rawApiKey.replace(/^["']|["']$/g, '').trim() : '';
+
     if (!apiKey) {
       return res.status(500).json({
         success: false,
-        error: 'জেমিনি এপিআই কি (GEMINI_API_KEY) কনফিগার করা নেই। অনুগ্রহ করে সেটিংস প্যানেলে এপিআই কি যুক্ত করুন। (Gemini API key is not configured in environment variables.)',
+        error: 'জেমিনি এপিআই কি (GEMINI_API_KEY) কনফিগার করা নেই। অনুগ্রহ করে Render ড্যাশবোর্ডের Environment ট্যাবে GEMINI_API_KEY যুক্ত করুন।',
       });
     }
 
@@ -273,7 +287,9 @@ Also provide the complete unformatted text in 'fullText'.`;
 
 // Vite / Static setup
 async function startServer() {
-  const isProd = process.env.NODE_ENV === 'production';
+  const distPath = path.resolve(__dirname, 'dist');
+  const hasDist = fs.existsSync(path.resolve(distPath, 'index.html'));
+  const isProd = process.env.NODE_ENV === 'production' || (hasDist && process.env.NODE_ENV !== 'development');
 
   if (!isProd) {
     const { createServer } = await import('vite');
@@ -283,7 +299,6 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.resolve(__dirname, 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.resolve(distPath, 'index.html'));
